@@ -43,7 +43,7 @@ def generate_certificates():
     if not rows:
         return jsonify({"error": "No data provided"}), 400
 
-    tpl_filename = f"{template_type}_default.pptx" if template_type in ['ojt', 'immersion', 'tesda'] else f"{template_type}.pptx"
+    tpl_filename = f"{template_type}.pptx"
     template_path = os.path.join(TEMPLATE_DIR, tpl_filename)
     if not os.path.exists(template_path):
         return jsonify({"error": f"Template '{tpl_filename}' not found"}), 404
@@ -61,9 +61,11 @@ def generate_certificates():
             new_slide.shapes._spTree.append(deepcopy(el))
         fill_slide(new_slide, row)
 
-    output_name = f"{template_type}.pptx"
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    output_name = f"certificate_{template_type} ({timestamp}).pptx"
     output_path = os.path.join(OUTPUT_DIR, output_name)
     prs.save(output_path)
+
     return jsonify({"message": "Certificates generated", "files": [output_name]})
 
 @bp.route('/files/<filename>', methods=['GET'])
@@ -72,7 +74,7 @@ def get_generated_file(filename):
     file_path = os.path.join(OUTPUT_DIR, filename)
     if not os.path.exists(file_path):
         return jsonify({"error": "File not found"}), 404
-    return send_file(file_path, as_attachment=True)
+    return send_file(file_path, as_attachment=True, download_name=filename)  # ✅ Fix here
 
 @bp.route('/preview', methods=['POST', 'OPTIONS'])
 @cross_origin()
@@ -84,12 +86,13 @@ def preview_certificate():
     if not rows:
         return jsonify({"error": "No data to preview"}), 400
 
-    tpl_filename = f"{template_type}.pptx" if template_type in ['ojt', 'immersion', 'tesda'] else f"{template_type}.pptx"
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    tpl_filename = f"{template_type}.pptx"
     template_path = os.path.join(TEMPLATE_DIR, tpl_filename)
+
     if not os.path.exists(template_path):
         return jsonify({"error": f"Template '{tpl_filename}' not found"}), 404
 
-    # TESDA preview layout
     if template_type == 'tesda':
         def get_value(row, target_key):
             for k in row.keys():
@@ -106,7 +109,7 @@ def preview_certificate():
             "<meta name='viewport' content='width=device-width, initial-scale=1.0'>",
             "<title>TESDA Data Preview</title><style>",
             "body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #2d3748; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; flex-direction: column; }",
-            ".container { max-width: 700px; width: 100%; padding: 30px; text-align: center; align: center }",
+            ".container { max-width: 700px; width: 100%; padding: 30px; text-align: center; }",
             ".tesda-card { background: #4a5568; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.18); padding: 32px 48px; max-width: 600px; display: none; flex-direction: column; align-items: flex-start; margin: auto; }",
             ".tesda-card.active { display: flex; }",
             ".tesda-card h3 { color: #fff; font-size: 1.8rem; margin-bottom: 20px; text-align: center; width: 100%; }",
@@ -161,7 +164,7 @@ def preview_certificate():
         """)
         return "\n".join(html_parts), 200, {"Content-Type": "text/html"}
 
-    # Default preview for non-TESDA templates
+    # Default preview (non-TESDA)
     html_parts = [
         "<!DOCTYPE html><html><head><meta charset='utf-8'>",
         "<meta name='viewport' content='width=device-width, initial-scale=1.0'>",

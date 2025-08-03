@@ -252,7 +252,7 @@ def get_download_history():
         history.append({
             "type": file_type,
             "filename": f,
-            "timestamp": datetime.fromtimestamp(os.path.getmtime(os.path.join(folder, f))).strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp": datetime.fromtimestamp(os.path.getmtime(os.path.join(folder, f))).strftime("%Y-%m-%d %H:%M"),
             "url": f"/static/generated/{f}"
         })
     return jsonify(history)
@@ -308,7 +308,7 @@ def generate_tesda_file():
 
         base_wb.remove(template_ws)
 
-        filename = f"TESDA_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        filename = f"TESDA_{datetime.now().strftime('%Y-%m-%d_%H:%M')}.xlsx"
         output_path = os.path.join("static", "generated", filename)
         base_wb.save(output_path)
 
@@ -364,7 +364,7 @@ def update_download_history():
         recent_downloads.insert(0, {
             "type": file_type,
             "filename": filename,
-            "timestamp": datetime.fromtimestamp(os.path.getmtime(file_path)).strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp": datetime.fromtimestamp(os.path.getmtime(file_path)).strftime("%Y-%m-%d %H:%M"),
             "url": f"/static/generated/{filename}"
         })
 
