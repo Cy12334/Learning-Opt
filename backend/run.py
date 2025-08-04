@@ -10,7 +10,7 @@ from app.routes.generate import bp as generate_bp
 from app.routes.upload import bp as upload_bp
 from app.routes.excel_generate import excel_bp
 
-import requests
+
 import os
 import uuid
 import io, json, re, traceback

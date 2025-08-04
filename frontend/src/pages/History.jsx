@@ -1,58 +1,11 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import Sidebar from "../components/Sidebar";
-import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 
-// Scroll arrow component
-function ScrollArrow({ direction = "right", onClick, visible }) {
-  const [hover, setHover] = useState(false);
-  const baseStyle = {
-    background: "transparent",
-    border: "none",
-    color: "#a361ef",
-    cursor: "pointer",
-    fontSize: "2.2rem",
-    userSelect: "none",
-    padding: "0 0.5rem",
-    transition: "color 0.3s ease, transform 0.2s ease, opacity 0.3s ease",
-    outline: "none",
-    position: "absolute",
-    top: "50%",
-    transform: hover ? "translateY(-50%) scale(1.3)" : "translateY(-50%) scale(1)",
-    opacity: visible ? (hover ? 1 : 0.7) : 0,
-    zIndex: 10,
-    pointerEvents: visible ? "auto" : "none",
-    [direction === "left" ? "left" : "right"]: 10,
-  };
-
-  return (
-    <button
-      onClick={onClick}
-      style={baseStyle}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      aria-label={direction === "left" ? "Scroll left" : "Scroll right"}
-    >
-      {direction === "left" ? <FaChevronLeft /> : <FaChevronRight />}
-    </button>
-  );
-}
-
 function History() {
-  const certScrollRef = useRef(null);
-  const tesdaScrollRef = useRef(null);
-
   const [certificates, setCertificates] = useState([]);
   const [tesdaRecords, setTesdaRecords] = useState([]);
-
-  const [showCertLeft, setShowCertLeft] = useState(false);
-  const [showCertRight, setShowCertRight] = useState(false);
-  const [showTesdaLeft, setShowTesdaLeft] = useState(false);
-  const [showTesdaRight, setShowTesdaRight] = useState(false);
-
-  const [hoverCert, setHoverCert] = useState(false);
-  const [hoverTesda, setHoverTesda] = useState(false);
-
+  const [filterType, setFilterType] = useState("all");
   const navigate = useNavigate();
 
   const logout = () => {
@@ -60,40 +13,56 @@ function History() {
     navigate("/login");
   };
 
-  const scroll = (ref, direction) => {
-    if (!ref.current) return;
-    ref.current.scrollBy({ left: 200 * direction, behavior: "smooth" });
+  const downloadFile = async (filename) => {
+    try {
+      const res = await fetch(`http://localhost:5000/static/generated/${filename}`);
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      const filetype = filename.endsWith(".pptx") ? "Certificate" : "TESDA";
+      await fetch("http://localhost:5000/api/download-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename, filetype }),
+      });
+    } catch (e) {
+      console.error("Download failed:", e);
+    }
   };
 
-  const downloadFile = async (filename) => {
-  try {
-    const res = await fetch(`http://localhost:5000/static/generated/${filename}`);
-    if (!res.ok) throw new Error("Download failed");
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
+  const deleteFile = async (filename, filetype) => {
+    const isCertificate = filetype !== "TESDA";
+    const endpoint = isCertificate
+      ? `http://localhost:5000/generate/delete_certificate?filename=${encodeURIComponent(filename)}`
+      : `http://localhost:5000/api/delete_excel?filename=${encodeURIComponent(filename)}`;
 
-    // 👇 Determine file type based on extension
-    const filetype = filename.endsWith(".pptx") ? "certificate" : "tesda";
+    try {
+      const res = await fetch(endpoint, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
 
-    // ✅ Track both certificate and TESDA downloads
-    await fetch("http://localhost:5000/api/download-history", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filename, filetype }),
-    });
-  } catch (e) {
-    console.error("Download failed:", e);
-  }
-};
+      if (isCertificate) {
+        setCertificates((prev) => prev.filter((f) => f !== filename));
+      } else {
+        setTesdaRecords((prev) => prev.filter((f) => f !== filename));
+      }
 
-  // Fetch data
+      // Also remove from localStorage date history
+      const storedDates = JSON.parse(localStorage.getItem("fileDates") || "{}");
+      delete storedDates[filename];
+      localStorage.setItem("fileDates", JSON.stringify(storedDates));
+    } catch (e) {
+      console.error("Delete failed:", e);
+    }
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -108,34 +77,26 @@ function History() {
         console.error("Error fetching history:", err);
       }
     };
-
     fetchData();
   }, []);
 
-  // Handle scroll arrow visibility
+  // Store creation dates in localStorage once files are loaded
   useEffect(() => {
-    const el = certScrollRef.current;
-    if (!el) return;
-    const handleScroll = () => {
-      setShowCertLeft(el.scrollLeft > 0);
-      setShowCertRight(el.scrollLeft + el.clientWidth < el.scrollWidth);
-    };
-    handleScroll();
-    el.addEventListener("scroll", handleScroll);
-    return () => el.removeEventListener("scroll", handleScroll);
-  }, [certificates]);
+    const allFiles = [...certificates, ...tesdaRecords];
+    const storedDates = JSON.parse(localStorage.getItem("fileDates") || "{}");
+    let updated = false;
 
-  useEffect(() => {
-    const el = tesdaScrollRef.current;
-    if (!el) return;
-    const handleScroll = () => {
-      setShowTesdaLeft(el.scrollLeft > 0);
-      setShowTesdaRight(el.scrollLeft + el.clientWidth < el.scrollWidth);
-    };
-    handleScroll();
-    el.addEventListener("scroll", handleScroll);
-    return () => el.removeEventListener("scroll", handleScroll);
-  }, [tesdaRecords]);
+    allFiles.forEach((file) => {
+      if (!storedDates[file]) {
+        storedDates[file] = new Date().toISOString();
+        updated = true;
+      }
+    });
+
+    if (updated) {
+      localStorage.setItem("fileDates", JSON.stringify(storedDates));
+    }
+  }, [certificates, tesdaRecords]);
 
   const containerStyle = {
     backgroundColor: "#696b6c",
@@ -147,41 +108,6 @@ function History() {
     boxShadow: "0 5px 7px #0000004d",
   };
 
-  const scrollWrapperStyle = {
-    position: "relative",
-    display: "flex",
-    alignItems: "center",
-  };
-
-  const scrollContainerStyle = {
-    display: "flex",
-    overflowX: "auto",
-    scrollBehavior: "smooth",
-    scrollbarWidth: "none",
-    msOverflowStyle: "none",
-    flexGrow: 1,
-    padding: "0 2rem",
-    margin: "0 1rem",
-  };
-
-  const itemStyle = {
-    flex: "0 0 auto",
-    backgroundColor: "#4c3a91",
-    margin: "0 0.5rem",
-    padding: "1rem",
-    borderRadius: "4px",
-    minWidth: "150px",
-    height: "58px",
-    textAlign: "center",
-    boxShadow: "0 3px 5px #00000066",
-    opacity: 0.85,
-    transition: "transform 0.2s ease, opacity 0.2s ease",
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  };
-
   const sectionTitleStyle = {
     fontSize: "1.8rem",
     fontWeight: "700",
@@ -191,27 +117,27 @@ function History() {
     paddingBottom: "0.5rem",
   };
 
-  const renderRecords = (data, ref, hoverState, setHoverState, showLeft, showRight) => (
-    <div
-      style={scrollWrapperStyle}
-      onMouseEnter={() => setHoverState(true)}
-      onMouseLeave={() => setHoverState(false)}
-    >
-      <ScrollArrow direction="left" onClick={() => scroll(ref, -1)} visible={hoverState && showLeft} />
-      <div ref={ref} style={scrollContainerStyle} className="scroll-container">
-        {data.length === 0 ? (
-          <div style={{ color: "#ddd" }}>No records found.</div>
-        ) : (
-          data.map((item, index) => (
-            <div key={index} style={itemStyle} className="scroll-item" onClick={() => downloadFile(item)}>
-              {item}
-            </div>
-          ))
-        )}
-      </div>
-      <ScrollArrow direction="right" onClick={() => scroll(ref, 1)} visible={hoverState && showRight} />
-    </div>
-  );
+  const storedDates = JSON.parse(localStorage.getItem("fileDates") || "{}");
+
+  const combined = [
+    ...certificates.map((file) => {
+      const lower = file.toLowerCase();
+      let type = "Certificate";
+      if (lower.includes("immersion")) type = "Work Immersion";
+      else if (lower.includes("ojt")) type = "OJT Certificate";
+      return { file, type, date: storedDates[file] || new Date().toISOString() };
+    }),
+    ...tesdaRecords.map((file) => ({
+      file,
+      type: "TESDA",
+      date: storedDates[file] || new Date().toISOString(),
+    })),
+  ];
+
+  const filtered = combined.filter((record) => {
+    if (filterType === "all") return true;
+    return record.type.toLowerCase().includes(filterType);
+  });
 
   return (
     <div className="flex min-h-screen bg-[#1f1f1f] text-white">
@@ -227,26 +153,77 @@ function History() {
         </div>
 
         <div style={containerStyle}>
-          <h2 style={sectionTitleStyle}>Recently Made Certificates</h2>
-          {renderRecords(certificates, certScrollRef, hoverCert, setHoverCert, showCertLeft, showCertRight)}
+          <h2 style={sectionTitleStyle}>Generated Files</h2>
+
+          <div className="mb-4 flex gap-4">
+            {["all", "tesda", "ojt", "immersion"].map((type) => (
+              <button
+                key={type}
+                onClick={() => setFilterType(type)}
+                className={`px-4 py-2 rounded ${
+                  filterType === type ? "bg-[#a361ef] text-white" : "bg-gray-200 text-black"
+                }`}
+              >
+                {type === "all"
+                  ? "Show All"
+                  : type === "tesda"
+                  ? "TESDA Only"
+                  : type === "ojt"
+                  ? "OJT Certificate"
+                  : "Work Immersion"}
+              </button>
+            ))}
+          </div>
+
+          <table className="w-full table-auto border border-collapse border-white text-center text-white">
+            <thead>
+              <tr className="bg-[#4c3a91]">
+                <th className="border border-white px-4 py-2">#</th>
+                <th className="border border-white px-4 py-2">Filename</th>
+                <th className="border border-white px-4 py-2">Type</th>
+                <th className="border border-white px-4 py-2">Date Added</th>
+                <th className="border border-white px-4 py-2">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="border border-white px-4 py-2 text-gray-300">
+                    No records found.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((record, i) => (
+                  <tr
+                    key={i}
+                    className={i % 2 === 0 ? "bg-[#2c2c2c]" : "bg-[#3a3a3a]"}
+                  >
+                    <td className="border border-white px-4 py-2">{i + 1}</td>
+                    <td className="border border-white px-4 py-2">{record.file}</td>
+                    <td className="border border-white px-4 py-2">{record.type}</td>
+                    <td className="border border-white px-4 py-2">
+                      {new Date(record.date).toLocaleString()}
+                    </td>
+                    <td className="border border-white px-4 py-2 space-x-2">
+                      <button
+                        className="bg-[#a361ef] hover:bg-purple-700 text-white font-semibold py-1 px-3 rounded"
+                        onClick={() => downloadFile(record.file)}
+                      >
+                        Download
+                      </button>
+                      <button
+                        className="bg-red-600 hover:bg-red-700 text-white font-semibold py-1 px-3 rounded"
+                        onClick={() => deleteFile(record.file, record.type)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
-
-        <div style={containerStyle}>
-          <h2 style={sectionTitleStyle}>TESDA Records</h2>
-          {renderRecords(tesdaRecords, tesdaScrollRef, hoverTesda, setHoverTesda, showTesdaLeft, showTesdaRight)}
-        </div>
-
-        <style>{`
-          .scroll-container::-webkit-scrollbar {
-            display: none;
-          }
-
-          .scroll-item:hover {
-            transform: scale(1.05);
-            height: 70px;
-            opacity: 1;
-          }
-        `}</style>
       </div>
     </div>
   );

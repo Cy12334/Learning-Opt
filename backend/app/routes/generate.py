@@ -6,7 +6,7 @@ import json
 import io
 import re
 from copy import deepcopy
-from datetime import datetime
+
 
 bp = Blueprint('generate', __name__, url_prefix='/generate')
 
@@ -32,6 +32,24 @@ def fill_slide(slide, data_row):
                 for run in paragraph.runs:
                     run.text = ""
                 paragraph.runs[0].text = replaced
+
+@bp.route('/delete_certificate', methods=['DELETE'])
+@cross_origin()
+def delete_certificate():
+    filename = request.args.get("filename")
+    if not filename:
+        return jsonify({"error": "Filename is required"}), 400
+
+    file_path = os.path.join(OUTPUT_DIR, filename)
+
+    if not os.path.exists(file_path):
+        return jsonify({"error": "File not found"}), 404
+
+    try:
+        os.remove(file_path)
+        return jsonify({"message": "File deleted successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @bp.route('/certificates', methods=['POST', 'OPTIONS'])
 @cross_origin()
@@ -61,8 +79,8 @@ def generate_certificates():
             new_slide.shapes._spTree.append(deepcopy(el))
         fill_slide(new_slide, row)
 
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    output_name = f"certificate_{template_type} ({timestamp}).pptx"
+    
+    output_name = f"certificate_{template_type} .pptx"
     output_path = os.path.join(OUTPUT_DIR, output_name)
     prs.save(output_path)
 
@@ -86,7 +104,7 @@ def preview_certificate():
     if not rows:
         return jsonify({"error": "No data to preview"}), 400
 
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    
     tpl_filename = f"{template_type}.pptx"
     template_path = os.path.join(TEMPLATE_DIR, tpl_filename)
 
